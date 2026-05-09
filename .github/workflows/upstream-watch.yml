@@ -1,0 +1,120 @@
+name: Upstream drift watch
+on:
+  schedule:
+    - cron: '0 13 * * *' # 13:00 UTC daily (~9am ET in EDT, ~8am in EST)
+  workflow_dispatch: {}
+concurrency:
+  group: upstream-watch
+  cancel-in-progress: false
+permissions:
+  contents: read
+  issues: write
+jobs:
+  watch:
+    name: check-upstream-drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/cloudflare/skills.git
+          git fetch upstream main --quiet
+
+      - name: Compute drift
+        id: drift
+        run: |
+          set -euo pipefail
+          AHEAD=$(git rev-list --count HEAD..upstream/main)
+          UPSTREAM_SHA=$(git rev-parse upstream/main)
+          echo "ahead=$AHEAD" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+          if [ "$AHEAD" -gt 0 ]; then
+            # Write commit list to a file — never through $GITHUB_OUTPUT or shell
+            # interpolation, since upstream commit messages are untrusted input.
+            git log --pretty=format:'- [`%h`](https://github.com/cloudflare/skills/commit/%H) %s' HEAD..upstream/main > /tmp/commits.md
+          fi
+
+      - name: Ensure label exists
+        if: steps.drift.outputs.ahead != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create upstream-drift \
+            --color FBCA04 \
+            --description "Upstream cloudflare/skills has new commits" \
+            --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+
+      - name: Find existing tracking issue
+        id: existing
+        if: steps.drift.outputs.ahead != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NUM=$(gh issue list --label upstream-drift --state open \
+                  --json number --jq '.[0].number // empty' \
+                  --repo "$GITHUB_REPOSITORY")
+          echo "number=$NUM" >> "$GITHUB_OUTPUT"
+
+      - name: Build issue body
+        if: steps.drift.outputs.ahead != '0'
+        env:
+          AHEAD: ${{ steps.drift.outputs.ahead }}
+          UPSTREAM_SHA: ${{ steps.drift.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$AHEAD" = "1" ]; then PLURAL=""; else PLURAL="s"; fi
+          SHORT_SHA="${UPSTREAM_SHA:0:7}"
+
+          # Build the body via printf (safe %s substitution) + cat (raw copy
+          # of upstream commit list from /tmp/commits.md, never shell-evaluated).
+          {
+            printf '@CarterPape — upstream `cloudflare/skills@main` is **%s commit%s** ahead of `origin/main` (upstream HEAD: [`%s`](https://github.com/cloudflare/skills/commit/%s)).\n\n' \
+              "$AHEAD" "$PLURAL" "$SHORT_SHA" "$UPSTREAM_SHA"
+            printf 'Run `/sync` locally to fast-forward main and rebase `split-into-product-plugins` on top.\n\n'
+            printf '## New upstream commits\n\n'
+            cat /tmp/commits.md
+            printf '\n\n---\n<sub>Auto-managed by `.github/workflows/upstream-watch.yml`. Closes when the fork catches up.</sub>\n'
+          } > /tmp/body.md
+
+          {
+            printf '🔄 upstream-drift: %s commit%s behind cloudflare/skills@main' "$AHEAD" "$PLURAL"
+          } > /tmp/title.txt
+
+      - name: Open or update tracking issue
+        if: steps.drift.outputs.ahead != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXISTING: ${{ steps.existing.outputs.number }}
+        run: |
+          set -euo pipefail
+          TITLE=$(cat /tmp/title.txt)
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" \
+              --title "$TITLE" \
+              --body-file /tmp/body.md \
+              --repo "$GITHUB_REPOSITORY"
+          else
+            gh issue create \
+              --title "$TITLE" \
+              --body-file /tmp/body.md \
+              --label upstream-drift \
+              --repo "$GITHUB_REPOSITORY"
+          fi
+
+      - name: Close tracking issue if in sync
+        if: steps.drift.outputs.ahead == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NUM=$(gh issue list --label upstream-drift --state open \
+                  --json number --jq '.[0].number // empty' \
+                  --repo "$GITHUB_REPOSITORY")
+          if [ -n "$NUM" ]; then
+            gh issue close "$NUM" \
+              --comment "✅ Fork main caught up to upstream." \
+              --repo "$GITHUB_REPOSITORY"
+          fi

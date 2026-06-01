@@ -5,7 +5,7 @@ description: "Guides Cloudflare One Zero Trust and SASE work across Access, Gate
 
 # Cloudflare One
 
-Do not use this skill as product documentation. Before citing limits, settings, API fields, category IDs, or exact UI paths, retrieve current information from the [Cloudflare One docs](https://developers.cloudflare.com/cloudflare-one/), the Cloudflare docs MCP server, or the Cloudflare API schema.
+Before citing limits, settings, API fields, category IDs, or exact UI paths, retrieve current information from the [Cloudflare One docs](https://developers.cloudflare.com/cloudflare-one/), the Cloudflare docs MCP server, or the Cloudflare API schema.
 
 ## Workflow
 

@@ -405,6 +405,48 @@ Gradually roll out to 10% of users:
 }
 ```
 
+### A/B/n (Multi-Variant) Testing
+
+To split traffic across N variants, create one rule per variant with **cumulative** rollout percentages. The engine evaluates rules in priority order and uses the rollout percentage as a cumulative upper bound — so each rule's `percentage` should be the running total up to that variant.
+
+For example, to split traffic 30 % / 40 % / 30 % across variants A, B, and C:
+
+| Variant | Share | Cumulative threshold |
+|---------|-------|----------------------|
+| A       | 30 %  | 30                   |
+| B       | 40 %  | 70                   |
+| C       | 30 %  | 100                  |
+
+```json
+"rules": [
+  {
+    "priority": 1,
+    "conditions": [],
+    "serve_variation": "variant-a",
+    "rollout": { "percentage": 30, "attribute": "targetingKey" }
+  },
+  {
+    "priority": 2,
+    "conditions": [],
+    "serve_variation": "variant-b",
+    "rollout": { "percentage": 70, "attribute": "targetingKey" }
+  },
+  {
+    "priority": 3,
+    "conditions": [],
+    "serve_variation": "variant-c",
+    "rollout": { "percentage": 100, "attribute": "targetingKey" }
+  }
+]
+```
+
+Key points:
+- Rules are evaluated lowest-priority-number first. A user who falls into rule 1's 0–30 % bucket gets `variant-a` and is not evaluated further.
+- Rule 2's 70 % threshold covers the next 40 % of users (31–70 %).
+- Rule 3's 100 % threshold catches the remaining 30 % (71–100 %).
+- Always set the last rule to `100` so every user is assigned a variant.
+- Use an empty `conditions: []` array to match all users (no targeting filter).
+
 ### Progressive Rollout Workflow
 
 1. Create flag with 5% rollout, enable it

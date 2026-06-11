@@ -409,6 +409,8 @@ Gradually roll out to 10% of users:
 
 To split traffic across N variants, create one rule per variant with **cumulative** rollout percentages. Flagship evaluates rules in priority order. If a rule's conditions match but the user misses that rule's rollout percentage, evaluation continues to the next rule. Use the same stable rollout attribute on every rule so each user is compared against the same bucket as the thresholds increase.
 
+The example uses `conditions: []` because the rules are intended to match every context. For sticky user assignment, callers must still pass the configured bucketing attribute (`targetingKey` here); otherwise Flagship uses a random bucket per request.
+
 For example, to split traffic 30% / 40% / 30% across variants A, B, and C:
 
 | Variant | Share | Cumulative threshold |
@@ -421,25 +423,19 @@ For example, to split traffic 30% / 40% / 30% across variants A, B, and C:
 "rules": [
   {
     "priority": 1,
-    "conditions": [
-      { "attribute": "targetingKey", "operator": "not_equals", "value": "" }
-    ],
+    "conditions": [],
     "serve_variation": "variant-a",
     "rollout": { "percentage": 30, "attribute": "targetingKey" }
   },
   {
     "priority": 2,
-    "conditions": [
-      { "attribute": "targetingKey", "operator": "not_equals", "value": "" }
-    ],
+    "conditions": [],
     "serve_variation": "variant-b",
     "rollout": { "percentage": 70, "attribute": "targetingKey" }
   },
   {
     "priority": 3,
-    "conditions": [
-      { "attribute": "targetingKey", "operator": "not_equals", "value": "" }
-    ],
+    "conditions": [],
     "serve_variation": "variant-c",
     "rollout": { "percentage": 100, "attribute": "targetingKey" }
   }
